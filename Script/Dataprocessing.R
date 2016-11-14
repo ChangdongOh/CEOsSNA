@@ -16,7 +16,83 @@ for(i in splited){
   byyear[[index]]=sentences
 }
 
-texts=str_replace_all(byyear[[6]], '[^A-Za-z]+',' ')
+
+
+
+graphmaker <- function(year){
+  texts=str_replace_all(byyear[[year-2002]], '[^A-Za-z]+',' ')
+  
+  library(tm)
+  library(SnowballC)
+  
+  
+  cps<-Corpus(VectorSource(texts))
+  
+  
+  cps <- tm_map(cps, content_transformer(tolower))
+  cps <- tm_map(cps, content_transformer(removePunctuation))
+  cps <- tm_map(cps, content_transformer(removeNumbers))
+  cps <- tm_map(cps, removeWords, stopwords("english"))
+
+  
+  tdm=TermDocumentMatrix(cps)
+  mat<-as.matrix(tdm)
+  mat2<-mat %*% t(mat)
+  gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
+  gra<-simplify(gra)
+  density=graph.density(gra)
+  transitivity=transitivity(gra)
+  distance=mean_distance(gra)
+  
+  tdm=TermDocumentMatrix(cps,
+                         control=list(weightiing=weightTfIdf,
+                                      bounds=list(global=c(floor(length(cps)*0.04), Inf)
+                                      )))
+  
+  
+  mat<-as.matrix(tdm)
+  mat2<-mat %*% t(mat)
+  
+  library(igraph)
+  
+  gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
+  gra<-simplify(gra)
+  
+  btw<-betweenness(gra)
+  btw.score<-round(btw)
+  btw.colors<-rev(heat.colors(max(btw.score)))
+  V(gra)$color<-btw.colors[btw.score]
+  V(gra)$size<-degree(gra)
+  
+  png(file=paste0('energy',year,'.png'),height=1200,width=1600)
+  
+  plot.igraph(gra,
+              #layout=layout.fruchterman.reingold.grid,
+              main=paste0('Energy Industry ',year,' Network'),
+              sub=paste0('Graph Density ', density, ' Clustering Coefficients ', transitivity, ' Mean Distance ', distance),
+              rescale=T,
+              #vertex.frame.color='white',
+              vertex.label.color='black',
+              vertex.color=V(gra)$color,
+              edge.width=(E(gra)$weight-1)*3,
+              vertex.size=V(gra)$size/(sum(V(gra)$size)/400),
+              edge.color='gray'
+              #edge.mode=??
+  )
+  
+  dev.off()
+}
+
+
+for(i in 2003:2014){
+  graphmaker(i)
+}
+
+
+
+
+
+texts=str_replace_all(byyear[[5]], '[^A-Za-z]+',' ')
 
 
 library(tm)
@@ -36,7 +112,7 @@ tdmt1<-Sys.time()
 
 tdm=TermDocumentMatrix(cps,
                        control=list(weightiing=weightTfIdf,
-                                    bounds=list(global=c(floor(length(cps)*0.05), Inf)
+                                    bounds=list(global=c(4, Inf)
                        )))
 
 
@@ -53,7 +129,7 @@ gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
 gra<-simplify(gra)
 
 btw<-betweenness(gra)
-btw.score<-round(log(btw)+1)
+btw.score<-round(log(btw+1))
 btw.colors<-rev(heat.colors(max(btw.score)))
 V(gra)$color<-btw.colors[btw.score]
 V(gra)$size<-degree(gra)
