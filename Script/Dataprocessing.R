@@ -1,26 +1,36 @@
-library(stringr)
-
-fl<-unique(readLines(file('Data/Merged.txt')))
-speechdata=unique(paste(fl, collapse=' '))
 
 
-byyear=list()
-splited<-unique(str_split(speechdata,'-----------------------------------')[[1]])[-1]
-for(i in splited){
-  print(str_split(i,'\\.')[[1]][1])
-  index=as.integer(str_extract(i, '\\d{4}'))-2002
-  sentences=str_split(i,'\\.')[[1]][-1]
-  tryCatch({
-    sentences=c(sentences,byyear[[index]])
-  },error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-  byyear[[index]]=sentences
+read_data<-function(category, year){
+  
+  library(stringr)
+  fl<-unique(readLines(file(paste0('Data/',as.character(category),'/Merged.txt'))))
+  speechdata=unique(paste(fl, collapse=' '))
+  
+  splited<-unique(str_split(speechdata,'-----------------------------------')[[1]])[-1]
+  splited2=as.character()
+  for(i in splited){
+    if(str_detect(i, '-- Supplementary|없음|No message')!=TRUE & nchar(i)>400){
+      splited2=c(splited2, i)  
+    }
+  }
+  splited<-splited2
+  splited<-str_replace_all(splited, '[-]+ [\\s\\S]{1,15}([\\d]{4})', '\\1')
+  byyear=vector('list',11)
+  for(i in splited){
+    print(str_split(i,'\\.')[[1]][1])
+    if(str_detect(i, '\\d{4}')){
+      index=as.integer(str_extract(i, '\\d{4}'))-2003
+    }
+    if(index > 0){
+      sentences=str_split(i,'\\.')[[1]][-1]
+      byyear[[index]]=sentences
+    }
+  }
+  
+  return(byyear[[year-2003]])
 }
 
-
-
-
-graphmaker <- function(year){
-  texts=str_replace_all(byyear[[year-2002]], '[^A-Za-z]+',' ')
+graph <- function(texts){
   
   library(tm)
   library(SnowballC)
@@ -32,134 +42,56 @@ graphmaker <- function(year){
   cps <- tm_map(cps, content_transformer(tolower))
   cps <- tm_map(cps, content_transformer(removePunctuation))
   cps <- tm_map(cps, content_transformer(removeNumbers))
-  cps <- tm_map(cps, removeWords, stopwords("english"))
-
+  cps <- tm_map(cps, removeWords, c(stopwords("english"),'also'))
   
-  tdm=TermDocumentMatrix(cps)
-  mat<-as.matrix(tdm)
-  mat2<-mat %*% t(mat)
-  gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
-  gra<-simplify(gra)
-  density=graph.density(gra)
-  transitivity=transitivity(gra)
-  distance=mean_distance(gra)
+  cps =tm_map(cps, stemDocument)
+  
+  require(igraph)
   
   tdm=TermDocumentMatrix(cps,
-                         control=list(weightiing=weightTfIdf,
-                                      bounds=list(global=c(floor(length(cps)*0.04), Inf)
-                                      )))
-  
-  
+                         control=list(weightiing=weightTfIdf))
   mat<-as.matrix(tdm)
   mat2<-mat %*% t(mat)
-  
-  library(igraph)
-  
   gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
-  gra<-simplify(gra)
+  nodes=vcount(gra)
+  edges=ecount(gra)
+  density=graph.density(gra)
+  transitivity=transitivity(gra)
+  meandistance=mean_distance(gra)
+  comm<-multilevel.community(gra)
+  numcom=length(comm)
+  mod<-modularity(comm)
+  bigcom3<-as.numeric(sort(sizes(comm), decreasing=T)[1:3]/nodes)
   
-  btw<-betweenness(gra)
-  btw.score<-round(btw)
-  btw.colors<-rev(heat.colors(max(btw.score)))
-  V(gra)$color<-btw.colors[btw.score]
-  V(gra)$size<-degree(gra)
-  
-  png(file=paste0('energy',year,'.png'),height=1200,width=1600)
-  
-  plot.igraph(gra,
-              #layout=layout.fruchterman.reingold.grid,
-              main=paste0('Energy Industry ',year,' Network'),
-              sub=paste0('Graph Density ', density, ' Clustering Coefficients ', transitivity, ' Mean Distance ', distance),
-              rescale=T,
-              #vertex.frame.color='white',
-              vertex.label.color='black',
-              vertex.color=V(gra)$color,
-              edge.width=(E(gra)$weight-1)*3,
-              vertex.size=V(gra)$size/(sum(V(gra)$size)/400),
-              edge.color='gray'
-              #edge.mode=??
-  )
-  
-  dev.off()
+  return(c(nodes, edges, density, transitivity, meandistance, numcom, mod, bigcom3))
+}
+
+category=c('Energy','Food and Beverage','Health Management',
+           'Industrial Goods and Services','Technology','Telecommunication','Utility')
+total=vector('list',7)
+names(total)=category
+for(i in category){
+  result=data.frame(matrix(ncol=10, nrow=3))
+  names(result)=c('Nodes','Edges','Density','Clustering Coefficient','Mean Distance','Number of Communities','Modularity','Size of 1st Community','Size of 2nd Community','Size of 3rd Community')
+  row.names(result)=c('Before Recession','Recession','After Recession')
+  beforedata=as.character()
+  for(j in 2004:2006){
+    beforedata=c(beforedata, read_data(i, j))
+  }
+  recdata=as.character()
+  for(j in 2007:2009){
+    recdata=c(recdata, read_data(i, j))
+  }
+  afterdata=as.character()
+  for(j in 2010:2014){
+    afterdata=c(afterdata,read_data(i, j))
+  }
+  result[1,]=graph(beforedata)
+  result[2,]=graph(recdata)
+  result[3,]=graph(afterdata)
+  write.csv(result, paste0('Data/',i,'.csv'))
+  total[[i]]=result
 }
 
 
-for(i in 2003:2014){
-  graphmaker(i)
-}
-
-
-
-
-
-texts=str_replace_all(byyear[[5]], '[^A-Za-z]+',' ')
-
-
-library(tm)
-library(SnowballC)
-
-
-cps<-Corpus(VectorSource(texts))
-
-
-cps <- tm_map(cps, content_transformer(tolower))
-cps <- tm_map(cps, content_transformer(removePunctuation))
-cps <- tm_map(cps, content_transformer(removeNumbers))
-cps <- tm_map(cps, removeWords, stopwords("english"))
-
-tdmt1<-Sys.time()
-
-
-tdm=TermDocumentMatrix(cps,
-                       control=list(weightiing=weightTfIdf,
-                                    bounds=list(global=c(4, Inf)
-                       )))
-
-
-tdmt2<-Sys.time()
-tdmt<-tdmt2-tdmt1
-tdmt
-
-mat<-as.matrix(tdm)
-mat2<-mat %*% t(mat)
-
-library(igraph)
-
-gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
-gra<-simplify(gra)
-
-btw<-betweenness(gra)
-btw.score<-round(log(btw+1))
-btw.colors<-rev(heat.colors(max(btw.score)))
-V(gra)$color<-btw.colors[btw.score]
-V(gra)$size<-degree(gra)
-
-
-#png(file='minjoo.png',height=1200,width=1600)
-#set.seed(1200)
-
-plot.igraph(gra,
-            #layout=layout.fruchterman.reingold.grid,
-            #main='새누리다 논평 단어 네트워크',
-            rescale=T,
-            #vertex.frame.color='white',
-            vertex.label.color='black',
-            vertex.color=V(gra)$color,
-            edge.width=E(gra)$weight,
-            vertex.size=V(gra)$size,
-            edge.color='gray'
-            #edge.mode=??
-)
-
-#dev.off()
-
-
-
-V(gra)$label <- V(gra)$name
-V(gra)$degree <- degree(gra)
-
-# plot layout fruchterman.reingold
-layout1 <- layout.fruchterman.reingold(gra)
-plot(gra, layout=layout1, vertex.size=5, 
-     vertex.label.color="darkred")
 
