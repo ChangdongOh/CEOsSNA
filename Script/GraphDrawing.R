@@ -48,7 +48,6 @@ V(gra)$size<-degree(gra)
 
 plot.igraph(gra,
             #layout=layout.fruchterman.reingold.grid,
-            #main='새누리다 논평 단어 네트워크',
             rescale=T,
             #vertex.frame.color='white',
             vertex.label.color='black',

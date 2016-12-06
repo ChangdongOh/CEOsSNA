@@ -30,7 +30,7 @@ read_data<-function(category, year){
   return(byyear[[year-2003]])
 }
 
-graph <- function(texts){
+graph <- function(texts, ind, period){
   
   library(tm)
   library(SnowballC)
@@ -48,11 +48,37 @@ graph <- function(texts){
   
   require(igraph)
   
+  
+  tdm=TermDocumentMatrix(cps,control=list(weightiing=weightTfIdf,bounds=list(global=c(floor(length(cps)*0.04), Inf))))
+  mat<-as.matrix(tdm)
+  mat2<-mat %*% t(mat)
+  gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
+  gra<-simplify(gra)
+  btw<-betweenness(gra)
+  btw.score<-round(btw/(vcount(gra)/5)+1)
+  btw.colors<-rev(heat.colors(max(btw.score)))
+  V(gra)$color<-btw.colors[btw.score]
+  V(gra)$size<-degree(gra)/(vcount(gra)/10)
+  #png(file=paste0(i,period,'.png'),height=1200,width=1600)
+  plot.igraph(gra,
+              rescale=T,
+              #vertex.frame.color='white',
+              vertex.label.color='black',
+              vertex.color=V(gra)$color,
+              edge.width=E(gra)$weight,
+              vertex.size=V(gra)$size,
+              edge.color='gray'
+              #edge.mode=??
+  )
+  dev.off()
+  
+  
   tdm=TermDocumentMatrix(cps,
                          control=list(weightiing=weightTfIdf))
   mat<-as.matrix(tdm)
   mat2<-mat %*% t(mat)
   gra <- graph.adjacency(mat2, weighted=TRUE, mode="undirected")
+  gra<-simplify(gra)
   nodes=vcount(gra)
   edges=ecount(gra)
   density=graph.density(gra)
@@ -63,8 +89,14 @@ graph <- function(texts){
   mod<-modularity(comm)
   bigcom3<-as.numeric(sort(sizes(comm), decreasing=T)[1:3]/nodes)
   
+  write.graph(gra, paste0(i,as.character(period),'.graphml'), format="graphml")
   return(c(nodes, edges, density, transitivity, meandistance, numcom, mod, bigcom3))
+  
+
+  
 }
+
+
 
 category=c('Energy','Food and Beverage','Health Management',
            'Industrial Goods and Services','Technology','Telecommunication','Utility')
@@ -86,9 +118,9 @@ for(i in category){
   for(j in 2010:2014){
     afterdata=c(afterdata,read_data(i, j))
   }
-  result[1,]=graph(beforedata)
-  result[2,]=graph(recdata)
-  result[3,]=graph(afterdata)
+  result[1,]=graph(beforedata, i, 1)
+  result[2,]=graph(recdata, i, 2)
+  result[3,]=graph(afterdata, i, 3)
   write.csv(result, paste0('Data/',i,'.csv'))
   total[[i]]=result
 }
